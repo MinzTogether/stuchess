@@ -1,4 +1,3 @@
-
 name: Build stuchess APK
 
 on:
@@ -47,20 +46,79 @@ jobs:
       - name: Run unit tests
         run: gradle testDebugUnitTest
 
-      - name: Build Debug APKs (armeabi-v7a, arm64-v8a, universal)
-        run: gradle assembleDebug
+      - name: Build Release APKs (armeabi-v7a, arm64-v8a, universal)
+        run: gradle assembleRelease
 
-      - name: Package renamed APKs
+      - name: Sign and package Release APKs
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KYSTORE_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
+          set -euo pipefail
+
+          for var in KEYSTORE_BASE64 KEY_ALIAS KEY_PASSWORD STORE_PASSWORD; do
+            if [ -z "${!var:-}" ]; then
+              echo "Error: Missing required signing secret ($var)." >&2
+              exit 1
+            fi
+          done
+
+          SIGN_TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$SIGN_TMP_DIR"' EXIT
+
+          KEYSTORE_PATH="$SIGN_TMP_DIR/release.keystore"
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          BUILD_TOOLS_DIR="$(ls -1d "$SDK_DIR/build-tools/"* 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [ -z "$BUILD_TOOLS_DIR" ] || [ ! -x "$BUILD_TOOLS_DIR/apksigner" ] || [ ! -x "$BUILD_TOOLS_DIR/zipalign" ]; then
+            echo "Error: Android SDK build-tools (zipalign/apksigner) not found under $SDK_DIR." >&2
+            exit 1
+          fi
+
+          ZIPALIGN="$BUILD_TOOLS_DIR/zipalign"
+          APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+
           mkdir -p dist
 
-          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk dist/stuchess_v7a.apk
-          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk dist/stuchess_v8a.apk
-          cp app/build/outputs/apk/debug/app-universal-debug.apk dist/stuchess_universal.apk
+          sign_apk() {
+            local abi_tag="$1"
+            local out_name="$2"
+            local unsigned_apk="app/build/outputs/apk/release/app-${abi_tag}-release-unsigned.apk"
+            local signed_default_apk="app/build/outputs/apk/release/app-${abi_tag}-release.apk"
+            local src_apk=""
 
-          for apk in dist/stuchess_v7a.apk dist/stuchess_v8a.apk dist/stuchess_universal.apk; do
-            test -s "$apk"
-          done
+            if [ -f "$unsigned_apk" ]; then
+              src_apk="$unsigned_apk"
+            elif [ -f "$signed_default_apk" ]; then
+              src_apk="$signed_default_apk"
+            else
+              echo "Error: Release APK for $abi_tag not found." >&2
+              exit 1
+            fi
+
+            local aligned_apk="$SIGN_TMP_DIR/${out_name}.aligned.apk"
+            local out_apk="dist/${out_name}"
+
+            "$ZIPALIGN" -f -p 4 "$src_apk" "$aligned_apk"
+            "$APKSIGNER" sign \
+              --ks "$KEYSTORE_PATH" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass env:STORE_PASSWORD \
+              --key-pass env:KEY_PASSWORD \
+              --v4-signing-enabled false \
+              --out "$out_apk" \
+              "$aligned_apk"
+            "$APKSIGNER" verify "$out_apk"
+            test -s "$out_apk"
+          }
+
+          sign_apk "armeabi-v7a" "stuchess_v7a.apk"
+          sign_apk "arm64-v8a" "stuchess_v8a.apk"
+          sign_apk "universal" "stuchess_universal.apk"
 
           ls -lh dist/stuchess_*.apk
 
@@ -83,4 +141,3 @@ jobs:
             dist/stuchess_v7a.apk
             dist/stuchess_v8a.apk
             dist/stuchess_universal.apk
-            
