@@ -5,6 +5,7 @@ on:
     branches: [ main, master ]
     tags:
       - 'Android-v*'
+      - 'v*'
 
   workflow_dispatch:
 
