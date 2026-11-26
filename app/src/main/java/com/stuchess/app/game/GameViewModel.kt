@@ -146,12 +146,58 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         blackBotEngine.requestStopSearch()
         lastPreMoveLines = emptyList()
 
-        val initialPos = ChessPosition.initial()
+        val initialPos = when (config.setupMode) {
+            BoardSetupMode.STANDARD -> ChessPosition.initial()
+            BoardSetupMode.CUSTOM -> ChessPosition.initial()
+            BoardSetupMode.RANDOM -> ChessPosition.randomUnrestricted()
+        }
         val flip = config.mode == GameMode.BOT_VS_HUMAN && config.humanColor == PieceColor.BLACK
+
+        if (config.setupMode == BoardSetupMode.CUSTOM) {
+            _uiState.update {
+                it.copy(
+                    config = config,
+                    isCustomizingBoard = true,
+                    position = initialPos,
+                    positionHistory = listOf(initialPos),
+                    moveRecords = emptyList(),
+                    viewingPly = null,
+                    selectedSquare = null,
+                    legalTargets = emptyList(),
+                    pendingPromotion = null,
+                    boardFlipped = flip,
+                    hintMove = null,
+                    hintEval = null,
+                    currentEval = EvalScore(cp = initialPos.materialBalanceCp()),
+                    isEngineThinking = false,
+                    isBotVsBotPaused = false,
+                    whiteTimeMs = config.timeControl.initialMs,
+                    blackTimeMs = config.timeControl.initialMs,
+                    gameResult = GameResult.ONGOING,
+                    statusMessage = "Drag or tap any pieces to swap positions"
+                )
+            }
+            return
+        }
+
+        launchMatchWithPosition(config, initialPos, flip)
+    }
+
+    private fun launchMatchWithPosition(
+        config: NewGameConfig,
+        initialPos: ChessPosition,
+        flip: Boolean
+    ) {
+        engineJob?.cancel()
+        evalEngine.requestStopSearch()
+        whiteBotEngine.requestStopSearch()
+        blackBotEngine.requestStopSearch()
+        lastPreMoveLines = emptyList()
 
         _uiState.update {
             it.copy(
                 config = config,
+                isCustomizingBoard = false,
                 position = initialPos,
                 positionHistory = listOf(initialPos),
                 moveRecords = emptyList(),
@@ -162,13 +208,13 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 boardFlipped = flip,
                 hintMove = null,
                 hintEval = null,
-                currentEval = EvalScore(cp = 20),
+                currentEval = EvalScore(cp = if (config.setupMode == BoardSetupMode.STANDARD) 20 else initialPos.materialBalanceCp()),
                 isEngineThinking = false,
                 isBotVsBotPaused = false,
                 whiteTimeMs = config.timeControl.initialMs,
                 blackTimeMs = config.timeControl.initialMs,
-                gameResult = GameResult.ONGOING,
-                statusMessage = null
+                gameResult = initialPos.gameResult(),
+                statusMessage = if (config.setupMode == BoardSetupMode.RANDOM) "Random positions shuffled" else null
             )
         }
 
@@ -207,6 +253,84 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun shuffleSetupBoard() {
+        val state = _uiState.value
+        if (!state.isCustomizingBoard) return
+        val shuffled = ChessPosition.randomUnrestricted()
+        _uiState.update {
+            it.copy(
+                position = shuffled,
+                positionHistory = listOf(shuffled),
+                selectedSquare = null,
+                legalTargets = emptyList(),
+                currentEval = EvalScore(cp = shuffled.materialBalanceCp()),
+                statusMessage = "Positions shuffled. Drag to adjust or tap Start."
+            )
+        }
+    }
+
+    fun resetSetupBoard() {
+        val state = _uiState.value
+        if (!state.isCustomizingBoard) return
+        val initial = ChessPosition.initial()
+        _uiState.update {
+            it.copy(
+                position = initial,
+                positionHistory = listOf(initial),
+                selectedSquare = null,
+                legalTargets = emptyList(),
+                currentEval = EvalScore(cp = 20),
+                statusMessage = "Board reset to standard layout"
+            )
+        }
+    }
+
+    fun toggleSetupSideToMove() {
+        val state = _uiState.value
+        if (!state.isCustomizingBoard) return
+        val nextPos = state.position.withSideToMove(state.position.sideToMove.opposite())
+        _uiState.update {
+            it.copy(
+                position = nextPos,
+                positionHistory = listOf(nextPos),
+                selectedSquare = null,
+                statusMessage = "${if (nextPos.sideToMove == PieceColor.WHITE) "White" else "Black"} moves first"
+            )
+        }
+    }
+
+    fun confirmCustomSetupAndStart() {
+        val state = _uiState.value
+        if (!state.isCustomizingBoard) return
+        val error = state.position.validateForPlay()
+        if (error != null) {
+            _uiState.update { it.copy(statusMessage = error) }
+            return
+        }
+        launchMatchWithPosition(state.config, state.position, state.boardFlipped)
+    }
+
+    private fun swapSetupPieces(from: Square, to: Square) {
+        val state = _uiState.value
+        if (!state.isCustomizingBoard) return
+        if (from == to) {
+            _uiState.update { it.copy(selectedSquare = null) }
+            return
+        }
+        val updated = state.position.swapOrMovePiece(from, to)
+        val validationError = updated.validateForPlay()
+        _uiState.update {
+            it.copy(
+                position = updated,
+                positionHistory = listOf(updated),
+                selectedSquare = null,
+                legalTargets = emptyList(),
+                currentEval = EvalScore(cp = updated.materialBalanceCp()),
+                statusMessage = validationError ?: "Ready to start match"
+            )
+        }
+    }
+
     fun selectActiveBot(profileId: String) {
         val profile = botArchiveManager.findProfile(profileId)
         _uiState.update { cur ->
@@ -231,13 +355,24 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         val state = _uiState.value
-        if (!state.gameResult.isFinished && state.config.mode != GameMode.HUMAN_VS_HUMAN) {
+        if (!state.isCustomizingBoard && !state.gameResult.isFinished && state.config.mode != GameMode.HUMAN_VS_HUMAN) {
             scheduleEngineWork()
         }
     }
 
     fun onSquareTapped(square: Square) {
         val state = _uiState.value
+        if (state.isCustomizingBoard) {
+            val selected = state.selectedSquare
+            if (selected != null) {
+                swapSetupPieces(selected, square)
+                return
+            }
+            if (state.position.pieceAt(square) != null) {
+                _uiState.update { it.copy(selectedSquare = square, legalTargets = emptyList()) }
+            }
+            return
+        }
         if (!state.isViewingLive || state.gameResult.isFinished) return
         if (!isHumanTurn(state)) return
 
@@ -261,6 +396,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onPieceDragged(from: Square, to: Square) {
         val state = _uiState.value
+        if (state.isCustomizingBoard) {
+            swapSetupPieces(from, to)
+            return
+        }
         if (!state.isViewingLive || state.gameResult.isFinished) return
         if (!isHumanTurn(state)) return
         val candidates = state.position.legalMovesFrom(from).filter { it.to == to }
@@ -635,7 +774,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 delay(100L)
                 val state = _uiState.value
                 if (state.config.timeControl.initialMs <= 0L) continue
-                if (state.gameResult.isFinished || state.moveRecords.isEmpty()) continue
+                if (state.isCustomizingBoard || state.gameResult.isFinished || state.moveRecords.isEmpty()) continue
                 if (state.config.mode == GameMode.BOT_VS_BOT && state.isBotVsBotPaused) continue
 
                 if (state.position.sideToMove == PieceColor.WHITE) {

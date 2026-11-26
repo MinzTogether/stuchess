@@ -1,24 +1,25 @@
 package com.stuchess.app.engine
 
 import com.stuchess.app.game.PieceColor
-import kotlin.math.abs
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.exp
 
 enum class MoveClassification(
     val label: String,
     val badge: String,
-    val colorHex: Long
+    val colorHex: Long,
+    val badgeTextColorHex: Long
 ) {
-    BOOK("Book", "B", 0xFFA88865),
-    BRILLIANT("Brilliant", "!!", 0xFF1BADA6),
-    GREAT("Great", "!", 0xFF5C8BB0),
-    BEST("Best", "★", 0xFF96BC4B),
-    EXCELLENT("Excellent", "✓", 0xFF96BC4B),
-    GOOD("Good", "○", 0xFF96AF8B),
-    INACCURACY("Inaccuracy", "?!", 0xFFF7C631),
-    MISTAKE("Mistake", "?", 0xFFE68A2E),
-    BLUNDER("Blunder", "??", 0xFFCA3431)
+    BOOK("Book", "B", 0xFFD5A47D, 0xFF1F1B16),
+    BRILLIANT("Brilliant", "!!", 0xFF26C2A3, 0xFFFFFFFF),
+    GREAT("Great", "!", 0xFF5C9CE6, 0xFFFFFFFF),
+    BEST("Best", "★", 0xFF81C744, 0xFFFFFFFF),
+    EXCELLENT("Excellent", "✓", 0xFF96D153, 0xFF141B0D),
+    GOOD("Good", "○", 0xFF95C47B, 0xFF141B0D),
+    INACCURACY("Inaccuracy", "?!", 0xFFF7C631, 0xFF1F1B12),
+    MISTAKE("Mistake", "?", 0xFFFF922B, 0xFFFFFFFF),
+    BLUNDER("Blunder", "??", 0xFFFA412D, 0xFFFFFFFF)
 }
 
 data class EvalScore(

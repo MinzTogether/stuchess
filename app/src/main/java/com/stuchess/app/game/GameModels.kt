@@ -11,6 +11,12 @@ enum class GameMode(val label: String) {
     HUMAN_VS_HUMAN("Human vs Human")
 }
 
+enum class BoardSetupMode(val label: String) {
+    STANDARD("Standard"),
+    CUSTOM("Custom"),
+    RANDOM("Random")
+}
+
 data class TimeControl(
     val id: String,
     val label: String,
@@ -32,6 +38,7 @@ data class TimeControl(
 
 data class NewGameConfig(
     val mode: GameMode = GameMode.BOT_VS_HUMAN,
+    val setupMode: BoardSetupMode = BoardSetupMode.STANDARD,
     val humanColor: PieceColor = PieceColor.WHITE,
     val whiteBotId: String = BotEngineProfile.BUILT_IN_ID,
     val blackBotId: String = BotEngineProfile.BUILT_IN_ID,
@@ -63,6 +70,7 @@ data class PendingPromotion(
 
 data class GameUiState(
     val config: NewGameConfig = NewGameConfig(),
+    val isCustomizingBoard: Boolean = false,
     val position: ChessPosition = ChessPosition.initial(),
     val positionHistory: List<ChessPosition> = listOf(ChessPosition.initial()),
     val moveRecords: List<MoveRecord> = emptyList(),
@@ -108,6 +116,15 @@ data class GameUiState(
 
     val isViewingLive: Boolean
         get() = viewingPly == null || viewingPly == moveRecords.size
+
+    val completedFullMoves: Int
+        get() = moveRecords.size / 2
+
+    val totalFullMoves: Int
+        get() = (moveRecords.size + 1) / 2
+
+    val viewingFullMoveNumber: Int?
+        get() = viewingPly?.let { if (it == 0) 0 else (it + 1) / 2 }
 
     val whiteAccuracy: Double?
         get() {

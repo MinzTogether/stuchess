@@ -1,6 +1,7 @@
 package com.stuchess.app.game
 
 import kotlin.math.abs
+import kotlin.random.Random
 
 enum class PieceColor {
     WHITE,
@@ -655,6 +656,64 @@ data class ChessPosition(
         return bestMove
     }
 
+    fun swapOrMovePiece(from: Square, to: Square): ChessPosition {
+        if (from == to) return this
+        val nextBoard = board.copyOf()
+        val temp = nextBoard[to.index]
+        nextBoard[to.index] = nextBoard[from.index]
+        nextBoard[from.index] = temp
+
+        val wKingHome = nextBoard[4] == Piece(PieceColor.WHITE, PieceType.KING)
+        val bKingHome = nextBoard[60] == Piece(PieceColor.BLACK, PieceType.KING)
+        val base = ChessPosition(
+            board = nextBoard,
+            sideToMove = sideToMove,
+            whiteKingSide = wKingHome && nextBoard[7] == Piece(PieceColor.WHITE, PieceType.ROOK),
+            whiteQueenSide = wKingHome && nextBoard[0] == Piece(PieceColor.WHITE, PieceType.ROOK),
+            blackKingSide = bKingHome && nextBoard[63] == Piece(PieceColor.BLACK, PieceType.ROOK),
+            blackQueenSide = bKingHome && nextBoard[56] == Piece(PieceColor.BLACK, PieceType.ROOK),
+            enPassantSquare = null,
+            halfMoveClock = 0,
+            fullMoveNumber = 1
+        )
+        return base.copy(positionCounts = mapOf(base.positionKey() to 1))
+    }
+
+    fun withSideToMove(color: PieceColor): ChessPosition {
+        val base = copy(
+            sideToMove = color,
+            enPassantSquare = null,
+            halfMoveClock = 0,
+            fullMoveNumber = 1
+        )
+        return base.copy(positionCounts = mapOf(base.positionKey() to 1))
+    }
+
+    fun validateForPlay(): String? {
+        var whiteKings = 0
+        var blackKings = 0
+        for (i in 0 until 64) {
+            val p = board[i] ?: continue
+            val rank = i / 8
+            if (p.type == PieceType.KING) {
+                if (p.color == PieceColor.WHITE) whiteKings++ else blackKings++
+            }
+            if (p.type == PieceType.PAWN && (rank == 0 || rank == 7)) {
+                return "Pawns cannot start on rank 1 or rank 8"
+            }
+        }
+        if (whiteKings != 1 || blackKings != 1) {
+            return "Board must have exactly one White king and one Black king"
+        }
+        if (isInCheck(sideToMove.opposite())) {
+            return "Opponent king cannot start in check"
+        }
+        if (legalMoves().isEmpty()) {
+            return "Starting side has no legal moves"
+        }
+        return null
+    }
+
     fun toFen(): String = "${positionKey()} $halfMoveClock $fullMoveNumber"
 
     override fun equals(other: Any?): Boolean {
@@ -688,6 +747,67 @@ data class ChessPosition(
         const val INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
         fun initial(): ChessPosition = fromFen(INITIAL_FEN)
+
+        fun randomUnrestricted(random: Random = Random.Default): ChessPosition {
+            val pawnSquares = ArrayList<Int>(16).apply {
+                for (f in 0..7) add(1 * 8 + f)
+                for (f in 0..7) add(6 * 8 + f)
+            }
+            val majorSquares = ArrayList<Int>(16).apply {
+                for (f in 0..7) add(0 * 8 + f)
+                for (f in 0..7) add(7 * 8 + f)
+            }
+            val pawns = List(8) { Piece(PieceColor.WHITE, PieceType.PAWN) } +
+                List(8) { Piece(PieceColor.BLACK, PieceType.PAWN) }
+            val majors = listOf(
+                Piece(PieceColor.WHITE, PieceType.ROOK),
+                Piece(PieceColor.WHITE, PieceType.KNIGHT),
+                Piece(PieceColor.WHITE, PieceType.BISHOP),
+                Piece(PieceColor.WHITE, PieceType.QUEEN),
+                Piece(PieceColor.WHITE, PieceType.KING),
+                Piece(PieceColor.WHITE, PieceType.BISHOP),
+                Piece(PieceColor.WHITE, PieceType.KNIGHT),
+                Piece(PieceColor.WHITE, PieceType.ROOK),
+                Piece(PieceColor.BLACK, PieceType.ROOK),
+                Piece(PieceColor.BLACK, PieceType.KNIGHT),
+                Piece(PieceColor.BLACK, PieceType.BISHOP),
+                Piece(PieceColor.BLACK, PieceType.QUEEN),
+                Piece(PieceColor.BLACK, PieceType.KING),
+                Piece(PieceColor.BLACK, PieceType.BISHOP),
+                Piece(PieceColor.BLACK, PieceType.KNIGHT),
+                Piece(PieceColor.BLACK, PieceType.ROOK)
+            )
+
+            repeat(500) {
+                val board = arrayOfNulls<Piece>(64)
+                val shuffledPawns = pawns.shuffled(random)
+                val shuffledMajors = majors.shuffled(random)
+                for (idx in pawnSquares.indices) {
+                    board[pawnSquares[idx]] = shuffledPawns[idx]
+                }
+                for (idx in majorSquares.indices) {
+                    board[majorSquares[idx]] = shuffledMajors[idx]
+                }
+                val base = ChessPosition(
+                    board = board,
+                    sideToMove = PieceColor.WHITE,
+                    whiteKingSide = false,
+                    whiteQueenSide = false,
+                    blackKingSide = false,
+                    blackQueenSide = false,
+                    enPassantSquare = null,
+                    halfMoveClock = 0,
+                    fullMoveNumber = 1
+                )
+                val candidate = base.copy(positionCounts = mapOf(base.positionKey() to 1))
+                if (candidate.validateForPlay() == null) {
+                    return candidate
+                }
+            }
+            return initial()
+        }
+
+
 
         fun fromFen(fen: String): ChessPosition {
             val parts = fen.trim().split(Regex("\\s+"))

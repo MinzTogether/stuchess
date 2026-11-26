@@ -85,4 +85,25 @@ class ChessRulesTest {
         assertNotNull(after)
         assertEquals(GameResult.WHITE_WINS_CHECKMATE, after!!.gameResult())
     }
+
+    @Test
+    fun swapOrMovePieceSwapsTwoSquaresAndValidatesPawns() {
+        val start = ChessPosition.initial()
+        val swapped = start.swapOrMovePiece(Square.fromNotation("e1")!!, Square.fromNotation("d1")!!)
+        assertEquals(PieceType.KING, swapped.pieceAt(Square.fromNotation("d1")!!)?.type)
+        assertEquals(PieceType.QUEEN, swapped.pieceAt(Square.fromNotation("e1")!!)?.type)
+        assertNull(swapped.validateForPlay())
+
+        val illegalPawn = start.swapOrMovePiece(Square.fromNotation("e2")!!, Square.fromNotation("e1")!!)
+        assertNotNull(illegalPawn.validateForPlay())
+    }
+
+    @Test
+    fun randomUnrestrictedGeneratesValidPosition() {
+        val randomPos = ChessPosition.randomUnrestricted(kotlin.random.Random(42))
+        assertNull(randomPos.validateForPlay())
+        val pieceCount = randomPos.board.count { it != null }
+        assertEquals(32, pieceCount)
+        assertTrue(randomPos.legalMoves().isNotEmpty())
+    }
 }

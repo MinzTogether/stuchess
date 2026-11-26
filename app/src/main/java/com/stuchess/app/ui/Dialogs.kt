@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.stuchess.app.engine.BotEngineProfile
 import com.stuchess.app.engine.StockfishEngine
+import com.stuchess.app.game.BoardSetupMode
 import com.stuchess.app.game.GameMode
 import com.stuchess.app.game.NewGameConfig
 import com.stuchess.app.game.PieceColor
@@ -477,6 +478,7 @@ fun NewGameDialog(
     onStartGame: (NewGameConfig) -> Unit
 ) {
     var mode by remember { mutableStateOf(currentConfig.mode) }
+    var setupMode by remember { mutableStateOf(currentConfig.setupMode) }
     var humanColor by remember { mutableStateOf(currentConfig.humanColor) }
     var whiteBotId by remember { mutableStateOf(currentConfig.whiteBotId) }
     var blackBotId by remember { mutableStateOf(currentConfig.blackBotId) }
@@ -512,6 +514,18 @@ fun NewGameDialog(
                             },
                             selected = selected,
                             onClick = { mode = option },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                SectionLabel("Starting position")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    BoardSetupMode.entries.forEach { option ->
+                        ChipButton(
+                            label = option.label,
+                            selected = setupMode == option,
+                            onClick = { setupMode = option },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -668,6 +682,7 @@ fun NewGameDialog(
                     onStartGame(
                         NewGameConfig(
                             mode = mode,
+                            setupMode = setupMode,
                             humanColor = humanColor,
                             whiteBotId = whiteBotId,
                             blackBotId = blackBotId,
@@ -685,7 +700,7 @@ fun NewGameDialog(
                     contentColor = AppPalette.AccentOnPrimary
                 )
             ) {
-                Text("Start", fontWeight = FontWeight.SemiBold)
+                Text(if (setupMode == BoardSetupMode.CUSTOM) "Arrange" else "Start", fontWeight = FontWeight.SemiBold)
             }
         }
     )

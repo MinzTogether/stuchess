@@ -39,7 +39,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
@@ -67,6 +69,39 @@ fun rememberChessImageLoader(): ImageLoader {
     }
 }
 
+
+@Composable
+fun MoveClassificationBadge(
+    classification: MoveClassification,
+    size: Dp,
+    fontSize: TextUnit,
+    modifier: Modifier = Modifier
+) {
+    val bgColor = Color(classification.colorHex)
+    val textColor = Color(classification.badgeTextColorHex)
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(bgColor)
+            .border(1.5.dp, Color(0xCC1E1C1A), CircleShape)
+            .padding(1.dp)
+            .border(0.75.dp, Color(0x40FFFFFF), CircleShape)
+    ) {
+        Text(
+            text = classification.badge,
+            color = textColor,
+            style = TextStyle(
+                fontSize = fontSize,
+                fontWeight = FontWeight.ExtraBold,
+                lineHeight = fontSize
+            ),
+            maxLines = 1
+        )
+    }
+}
+
 @Composable
 fun ChessBoard(
     position: ChessPosition,
@@ -81,6 +116,7 @@ fun ChessBoard(
     showHints: Boolean,
     pendingPromotion: PendingPromotion?,
     isInteractive: Boolean,
+    allowFreePiecePlacement: Boolean = false,
     onSquareTap: (Square) -> Unit,
     onPieceDrag: (Square, Square) -> Unit,
     onPromotionSelected: (PieceType) -> Unit,
@@ -133,13 +169,14 @@ fun ChessBoard(
                         offsetToSquare(pos)?.let { onSquareTap(it) }
                     }
                 }
-                .pointerInput(position, boardFlipped, isInteractive, boardSizePx) {
+                .pointerInput(position, boardFlipped, isInteractive, allowFreePiecePlacement, boardSizePx) {
                     if (!isInteractive) return@pointerInput
                     detectDragGestures(
                         onDragStart = { startPos ->
                             val sq = offsetToSquare(startPos)
                             val piece = sq?.let { position.pieceAt(it) }
-                            if (sq != null && piece != null && piece.color == position.sideToMove) {
+                            val canDrag = piece != null && (allowFreePiecePlacement || piece.color == position.sideToMove)
+                            if (sq != null && canDrag) {
                                 draggingFrom = sq
                                 dragOffset = startPos
                                 onSquareTap(sq)
@@ -222,7 +259,7 @@ fun ChessBoard(
                     }
                 }
 
-                if (showHints && hintMove != null) {
+                if (!allowFreePiecePlacement && showHints && hintMove != null) {
                     drawHintArrow(
                         from = hintMove.from,
                         to = hintMove.to,
@@ -280,31 +317,19 @@ fun ChessBoard(
                 )
             }
 
-            if (lastMove != null && lastMoveClassification != null) {
+            if (!allowFreePiecePlacement && lastMove != null && lastMoveClassification != null) {
                 val (col, row) = squareToColRow(lastMove.to)
-                val badgeSize = (squareSizeDp * 0.38f).coerceIn(16.dp, 24.dp)
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .offset(
-                            x = squareSizeDp * (col + 1) - badgeSize + 2.dp,
-                            y = (squareSizeDp * row - 2.dp).coerceAtLeast(0.dp)
-                        )
-                        .size(badgeSize)
-                        .clip(CircleShape)
-                        .background(Color(lastMoveClassification.colorHex))
-                        .border(1.dp, Color(0x40000000), CircleShape)
-                ) {
-                    Text(
-                        text = lastMoveClassification.badge,
-                        color = Color.White,
-                        style = TextStyle(
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        maxLines = 1
+                val badgeSize = (squareSizeDp * 0.44f).coerceIn(20.dp, 28.dp)
+                val badgeFont = if (lastMoveClassification.badge.length > 1) 10.sp else 12.sp
+                MoveClassificationBadge(
+                    classification = lastMoveClassification,
+                    size = badgeSize,
+                    fontSize = badgeFont,
+                    modifier = Modifier.offset(
+                        x = (squareSizeDp * (col + 1) - badgeSize + 3.dp).coerceAtMost(squareSizeDp * 8 - badgeSize),
+                        y = (squareSizeDp * row - 3.dp).coerceAtLeast(0.dp)
                     )
-                }
+                )
             }
 
             draggingFrom?.let { fromSq ->

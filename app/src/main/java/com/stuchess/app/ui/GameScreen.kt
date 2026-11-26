@@ -33,7 +33,9 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.outlined.Lightbulb
 import java.util.Locale
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SwapVert
@@ -143,7 +145,8 @@ fun GameScreen(viewModel: GameViewModel) {
                         hintMove = if (state.isViewingLive) state.hintMove else null,
                         showHints = state.showHints,
                         pendingPromotion = state.pendingPromotion,
-                        isInteractive = state.isViewingLive,
+                        isInteractive = state.isViewingLive || state.isCustomizingBoard,
+                        allowFreePiecePlacement = state.isCustomizingBoard,
                         onSquareTap = viewModel::onSquareTapped,
                         onPieceDrag = viewModel::onPieceDragged,
                         onPromotionSelected = viewModel::completePromotion,
@@ -180,7 +183,15 @@ fun GameScreen(viewModel: GameViewModel) {
                             .fillMaxWidth()
                     )
 
-                    if (state.config.mode == GameMode.BOT_VS_BOT) {
+                    if (state.isCustomizingBoard) {
+                        CustomSetupControlRow(
+                            sideToMove = state.position.sideToMove,
+                            onReset = viewModel::resetSetupBoard,
+                            onShuffle = viewModel::shuffleSetupBoard,
+                            onToggleSide = viewModel::toggleSetupSideToMove,
+                            onStartMatch = viewModel::confirmCustomSetupAndStart
+                        )
+                    } else if (state.config.mode == GameMode.BOT_VS_BOT) {
                         BotVsBotControlRow(
                             isPaused = state.isBotVsBotPaused,
                             onTogglePause = viewModel::toggleBotVsBotPause,
@@ -260,7 +271,8 @@ fun GameScreen(viewModel: GameViewModel) {
                         hintMove = if (state.isViewingLive) state.hintMove else null,
                         showHints = state.showHints,
                         pendingPromotion = state.pendingPromotion,
-                        isInteractive = state.isViewingLive,
+                        isInteractive = state.isViewingLive || state.isCustomizingBoard,
+                        allowFreePiecePlacement = state.isCustomizingBoard,
                         onSquareTap = viewModel::onSquareTapped,
                         onPieceDrag = viewModel::onPieceDragged,
                         onPromotionSelected = viewModel::completePromotion,
@@ -284,7 +296,15 @@ fun GameScreen(viewModel: GameViewModel) {
                     onSelectPly = viewModel::viewHistoryAt
                 )
 
-                if (state.config.mode == GameMode.BOT_VS_BOT) {
+                if (state.isCustomizingBoard) {
+                    CustomSetupControlRow(
+                        sideToMove = state.position.sideToMove,
+                        onReset = viewModel::resetSetupBoard,
+                        onShuffle = viewModel::shuffleSetupBoard,
+                        onToggleSide = viewModel::toggleSetupSideToMove,
+                        onStartMatch = viewModel::confirmCustomSetupAndStart
+                    )
+                } else if (state.config.mode == GameMode.BOT_VS_BOT) {
                     BotVsBotControlRow(
                         isPaused = state.isBotVsBotPaused,
                         onTogglePause = viewModel::toggleBotVsBotPause,
@@ -397,18 +417,29 @@ private fun TopStatusStrip(state: GameUiState) {
             .fillMaxWidth()
             .padding(horizontal = 2.dp)
     ) {
+        val leftLabel = when {
+            state.isCustomizingBoard -> "Custom Setup"
+            state.config.setupMode == com.stuchess.app.game.BoardSetupMode.RANDOM -> "${state.config.mode.label} · Random"
+            state.config.setupMode == com.stuchess.app.game.BoardSetupMode.CUSTOM -> "${state.config.mode.label} · Custom"
+            else -> state.config.mode.label
+        }
         Text(
-            text = state.config.mode.label,
+            text = leftLabel,
             color = AppPalette.TextPrimary,
             fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
         )
         val rightText = when {
+            state.isCustomizingBoard -> state.statusMessage ?: "Swap pieces freely"
             state.gameResult.isFinished -> state.gameResult.label
             state.isEngineThinking -> "Stockfish thinking..."
             state.statusMessage != null -> state.statusMessage
             state.engineNotice != null -> "No engine binary"
-            !state.isViewingLive -> "Viewing move ${state.viewingPly}/${state.moveRecords.size}"
+            !state.isViewingLive -> "Move ${state.viewingFullMoveNumber ?: 0}/${state.totalFullMoves}"
+            state.completedFullMoves > 0 -> "Move ${state.completedFullMoves} · ${if (state.position.sideToMove == PieceColor.WHITE) "White" else "Black"}"
             else -> if (state.position.sideToMove == PieceColor.WHITE) "White to move" else "Black to move"
         }
         Text(
@@ -444,34 +475,46 @@ private fun EvaluationBanner(state: GameUiState) {
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+        } else if (state.isCustomizingBoard) {
+            Text(
+                text = "Tap or drag any piece to swap squares, then press Start Match",
+                color = AppPalette.TextSecondary,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         } else if (record != null && classification != null) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(Color(classification.colorHex))
+                MoveClassificationBadge(
+                    classification = classification,
+                    size = 26.dp,
+                    fontSize = if (classification.badge.length > 1) 11.sp else 13.sp
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = classification.badge,
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
+                        text = record.san,
+                        color = AppPalette.TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = classification.label,
+                        color = Color(classification.colorHex),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                Text(
-                    text = "${record.san} is ${classification.label}",
-                    color = AppPalette.TextPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
             val bestHint = if (state.showHints && record.bestMoveBefore != null &&
                 classification in listOf(
@@ -590,54 +633,130 @@ private fun PortraitMoveStrip(
     activePly: Int,
     onSelectPly: (Int) -> Unit
 ) {
+    val fullMoves = remember(moves) { moves.chunked(2) }
     val listState = rememberLazyListState()
-    LaunchedEffect(moves.size) {
-        if (moves.isNotEmpty()) {
-            listState.animateScrollToItem(moves.lastIndex)
+    LaunchedEffect(fullMoves.size) {
+        if (fullMoves.isNotEmpty()) {
+            listState.animateScrollToItem(fullMoves.lastIndex)
         }
     }
 
-    LazyRow(
-        state = listState,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        contentPadding = PaddingValues(horizontal = 2.dp),
+    Box(
+        contentAlignment = Alignment.CenterStart,
         modifier = Modifier
             .fillMaxWidth()
-            .height(34.dp)
+            .height(42.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(AppPalette.SurfacePrimary)
+            .border(1.dp, AppPalette.HairlineBorder, RoundedCornerShape(8.dp))
     ) {
-        itemsIndexed(moves) { index, record ->
-            val ply = index + 1
-            val selected = ply == activePly
-            val moveNumberPrefix = if (record.mover == PieceColor.WHITE) "${(index / 2) + 1}. " else ""
-            Row(
+        if (fullMoves.isEmpty()) {
+            Text(
+                text = "Moves will appear here",
+                color = AppPalette.TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+        } else {
+            LazyRow(
+                state = listState,
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (selected) AppPalette.SurfaceElevated else AppPalette.SurfacePrimary)
-                    .border(
-                        1.dp,
-                        if (selected) AppPalette.AccentPrimary else AppPalette.HairlineBorder,
-                        RoundedCornerShape(6.dp)
-                    )
-                    .clickable { onSelectPly(ply) }
-                    .padding(horizontal = 8.dp, vertical = 5.dp)
+                contentPadding = PaddingValues(horizontal = 6.dp),
+                modifier = Modifier.fillMaxSize()
             ) {
-                Text(
-                    text = "$moveNumberPrefix${record.san}",
-                    color = AppPalette.TextPrimary,
-                    style = TextStyle(fontSize = 12.sp, fontFeatureSettings = "tnum")
-                )
-                record.classification?.let { cls ->
-                    Box(
+                itemsIndexed(fullMoves) { moveIdx, pair ->
+                    val whiteMove = pair[0]
+                    val blackMove = pair.getOrNull(1)
+                    val isCompleteMove = blackMove != null
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
                         modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(Color(cls.colorHex))
-                    )
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (moveIdx % 2 == 0) Color(0xFF2B2926) else Color(0xFF34312E))
+                            .border(
+                                1.dp,
+                                if (isCompleteMove) AppPalette.HairlineBorder else Color(0x28FFFFFF),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "${moveIdx + 1}.",
+                            color = AppPalette.TextMuted,
+                            style = TextStyle(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                fontFeatureSettings = "tnum"
+                            ),
+                            modifier = Modifier.padding(end = 2.dp)
+                        )
+                        MoveStripChip(
+                            record = whiteMove,
+                            selected = whiteMove.ply == activePly,
+                            onClick = { onSelectPly(whiteMove.ply) }
+                        )
+                        if (blackMove != null) {
+                            MoveStripChip(
+                                record = blackMove,
+                                selected = blackMove.ply == activePly,
+                                onClick = { onSelectPly(blackMove.ply) }
+                            )
+                        } else {
+                            Text(
+                                text = "...",
+                                color = AppPalette.TextMuted,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MoveStripChip(
+    record: MoveRecord,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val cls = record.classification
+    val highlightColor = cls?.let { Color(it.colorHex) } ?: AppPalette.AccentPrimary
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(5.dp))
+            .background(if (selected) Color(0xFF47443F) else Color.Transparent)
+            .border(
+                width = if (selected) 1.dp else 0.dp,
+                color = if (selected) highlightColor else Color.Transparent,
+                shape = RoundedCornerShape(5.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 5.dp, vertical = 3.dp)
+    ) {
+        if (cls != null) {
+            MoveClassificationBadge(
+                classification = cls,
+                size = 16.dp,
+                fontSize = if (cls.badge.length > 1) 8.sp else 9.sp
+            )
+        }
+        Text(
+            text = record.san,
+            color = if (selected) Color.White else AppPalette.TextPrimary,
+            style = TextStyle(
+                fontSize = 12.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                fontFeatureSettings = "tnum"
+            ),
+            maxLines = 1
+        )
     }
 }
 
@@ -672,7 +791,7 @@ private fun LandscapeMoveList(
         } else {
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(6.dp),
+                contentPadding = PaddingValues(4.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -683,7 +802,9 @@ private fun LandscapeMoveList(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(if (rowIdx % 2 == 0) Color(0xFF2B2926) else Color.Transparent)
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
                     ) {
                         Text(
                             text = "${rowIdx + 1}.",
@@ -706,7 +827,14 @@ private fun LandscapeMoveList(
                                 modifier = Modifier.weight(1f)
                             )
                         } else {
-                            Spacer(modifier = Modifier.weight(1f))
+                            Text(
+                                text = "...",
+                                color = AppPalette.TextMuted,
+                                fontSize = 12.sp,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 6.dp)
+                            )
                         }
                     }
                 }
@@ -722,30 +850,82 @@ private fun MoveCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val cls = record.classification
+    val highlightColor = cls?.let { Color(it.colorHex) } ?: AppPalette.AccentPrimary
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
         modifier = modifier
             .clip(RoundedCornerShape(5.dp))
-            .background(if (selected) AppPalette.SurfaceElevated else Color.Transparent)
+            .background(if (selected) Color(0xFF47443F) else Color.Transparent)
+            .border(
+                width = if (selected) 1.dp else 0.dp,
+                color = if (selected) highlightColor else Color.Transparent,
+                shape = RoundedCornerShape(5.dp)
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 4.dp)
     ) {
-        Text(
-            text = record.san,
-            color = AppPalette.TextPrimary,
-            fontSize = 12.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            maxLines = 1
-        )
-        record.classification?.let { cls ->
-            Box(
-                modifier = Modifier
-                    .size(7.dp)
-                    .clip(CircleShape)
-                    .background(Color(cls.colorHex))
+        if (cls != null) {
+            MoveClassificationBadge(
+                classification = cls,
+                size = 16.dp,
+                fontSize = if (cls.badge.length > 1) 8.sp else 9.sp
             )
         }
+        Text(
+            text = record.san,
+            color = if (selected) Color.White else AppPalette.TextPrimary,
+            style = TextStyle(
+                fontSize = 12.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                fontFeatureSettings = "tnum"
+            ),
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun CustomSetupControlRow(
+    sideToMove: PieceColor,
+    onReset: () -> Unit,
+    onShuffle: () -> Unit,
+    onToggleSide: () -> Unit,
+    onStartMatch: () -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        CompactControlPill(
+            label = "Reset",
+            icon = Icons.Rounded.Refresh,
+            accent = false,
+            onClick = onReset,
+            modifier = Modifier.weight(0.9f)
+        )
+        CompactControlPill(
+            label = "Shuffle",
+            icon = Icons.Rounded.Shuffle,
+            accent = false,
+            onClick = onShuffle,
+            modifier = Modifier.weight(1f)
+        )
+        CompactControlPill(
+            label = if (sideToMove == PieceColor.WHITE) "1st: W" else "1st: B",
+            icon = null,
+            accent = false,
+            onClick = onToggleSide,
+            modifier = Modifier.weight(0.85f)
+        )
+        CompactControlPill(
+            label = "Start",
+            icon = Icons.Rounded.PlayArrow,
+            accent = true,
+            onClick = onStartMatch,
+            modifier = Modifier.weight(1.1f)
+        )
     }
 }
 
