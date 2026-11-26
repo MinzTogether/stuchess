@@ -25,7 +25,10 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.FileUpload
+import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -469,16 +472,74 @@ fun AddSourceDialog(
     )
 }
 
+@Composable
+fun PlayModeMenuDialog(
+    currentSetupMode: BoardSetupMode,
+    onSelectSetupMode: (BoardSetupMode) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = AppPalette.SurfacePrimary,
+        titleContentColor = AppPalette.TextPrimary,
+        textContentColor = AppPalette.TextSecondary,
+        title = {
+            Text("Choose Game Mode", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SettingsMenuRow(
+                    icon = Icons.Rounded.GridOn,
+                    title = "Standard",
+                    subtitle = if (currentSetupMode == BoardSetupMode.STANDARD) {
+                        "Classic starting layout · Current"
+                    } else {
+                        "Classic starting layout"
+                    },
+                    onClick = { onSelectSetupMode(BoardSetupMode.STANDARD) }
+                )
+                SettingsMenuRow(
+                    icon = Icons.Rounded.Tune,
+                    title = "Custom Position",
+                    subtitle = if (currentSetupMode == BoardSetupMode.CUSTOM) {
+                        "Arrange pieces freely before play · Current"
+                    } else {
+                        "Arrange pieces freely before play"
+                    },
+                    onClick = { onSelectSetupMode(BoardSetupMode.CUSTOM) }
+                )
+                SettingsMenuRow(
+                    icon = Icons.Rounded.Shuffle,
+                    title = "Random Chess",
+                    subtitle = if (currentSetupMode == BoardSetupMode.RANDOM) {
+                        "Randomly shuffle pieces at start · Current"
+                    } else {
+                        "Randomly shuffle pieces at start"
+                    },
+                    onClick = { onSelectSetupMode(BoardSetupMode.RANDOM) }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = AppPalette.TextSecondary)
+            }
+        }
+    )
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NewGameDialog(
     currentConfig: NewGameConfig,
+    selectedSetupMode: BoardSetupMode,
     botProfiles: List<BotEngineProfile>,
+    onBack: () -> Unit,
     onDismiss: () -> Unit,
     onStartGame: (NewGameConfig) -> Unit
 ) {
     var mode by remember { mutableStateOf(currentConfig.mode) }
-    var setupMode by remember { mutableStateOf(currentConfig.setupMode) }
+    val setupMode = selectedSetupMode
     var humanColor by remember { mutableStateOf(currentConfig.humanColor) }
     var whiteBotId by remember { mutableStateOf(currentConfig.whiteBotId) }
     var blackBotId by remember { mutableStateOf(currentConfig.blackBotId) }
@@ -495,38 +556,33 @@ fun NewGameDialog(
         titleContentColor = AppPalette.TextPrimary,
         textContentColor = AppPalette.TextSecondary,
         title = {
-            Text("New Game", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+            val titleLabel = when (setupMode) {
+                BoardSetupMode.STANDARD -> "Standard"
+                BoardSetupMode.CUSTOM -> "Custom Position"
+                BoardSetupMode.RANDOM -> "Random Chess"
+            }
+            Text(titleLabel, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
         },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.verticalScroll(rememberScrollState())
             ) {
-                SectionLabel("Mode")
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                SectionLabel("Match mode")
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     GameMode.entries.forEach { option ->
                         val selected = mode == option
                         ChipButton(
                             label = when (option) {
-                                GameMode.BOT_VS_HUMAN -> "Bot"
+                                GameMode.BOT_VS_HUMAN -> "Human vs Bot"
                                 GameMode.BOT_VS_BOT -> "Bot vs Bot"
-                                GameMode.HUMAN_VS_HUMAN -> "2 Players"
+                                GameMode.HUMAN_VS_HUMAN -> "Human vs Human"
                             },
                             selected = selected,
-                            onClick = { mode = option },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-
-                SectionLabel("Starting position")
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    BoardSetupMode.entries.forEach { option ->
-                        ChipButton(
-                            label = option.label,
-                            selected = setupMode == option,
-                            onClick = { setupMode = option },
-                            modifier = Modifier.weight(1f)
+                            onClick = { mode = option }
                         )
                     }
                 }
@@ -672,8 +728,8 @@ fun NewGameDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = AppPalette.TextSecondary)
+            TextButton(onClick = onBack) {
+                Text("Back", color = AppPalette.TextSecondary)
             }
         },
         confirmButton = {

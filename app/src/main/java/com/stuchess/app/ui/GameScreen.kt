@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import com.stuchess.app.engine.MoveClassification
+import com.stuchess.app.game.BoardSetupMode
 import com.stuchess.app.game.GameMode
 import com.stuchess.app.game.GameUiState
 import com.stuchess.app.game.GameViewModel
@@ -70,7 +71,8 @@ import com.stuchess.app.game.PieceColor
 @Composable
 fun GameScreen(viewModel: GameViewModel) {
     val state by viewModel.uiState.collectAsState()
-    var showNewGameDialog by remember { mutableStateOf(false) }
+    var showPlayModeMenu by remember { mutableStateOf(false) }
+    var pendingSetupMode by remember { mutableStateOf<BoardSetupMode?>(null) }
     var showSettingsMenu by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showAddSourceDialog by remember { mutableStateOf(false) }
@@ -211,7 +213,7 @@ fun GameScreen(viewModel: GameViewModel) {
 
                     ActionToolbar(
                         state = state,
-                        onNewGame = { showNewGameDialog = true },
+                        onNewGame = { showPlayModeMenu = true },
                         onFlip = viewModel::toggleBoardFlip,
                         onToggleHints = viewModel::toggleHints,
                         onTakeback = viewModel::takeback,
@@ -317,7 +319,7 @@ fun GameScreen(viewModel: GameViewModel) {
 
                 ActionToolbar(
                     state = state,
-                    onNewGame = { showNewGameDialog = true },
+                    onNewGame = { showPlayModeMenu = true },
                     onFlip = viewModel::toggleBoardFlip,
                     onToggleHints = viewModel::toggleHints,
                     onTakeback = viewModel::takeback,
@@ -335,13 +337,29 @@ fun GameScreen(viewModel: GameViewModel) {
         }
     }
 
-    if (showNewGameDialog) {
+    if (showPlayModeMenu) {
+        PlayModeMenuDialog(
+            currentSetupMode = state.config.setupMode,
+            onSelectSetupMode = { chosenSetup ->
+                showPlayModeMenu = false
+                pendingSetupMode = chosenSetup
+            },
+            onDismiss = { showPlayModeMenu = false }
+        )
+    }
+
+    pendingSetupMode?.let { chosenSetup ->
         NewGameDialog(
             currentConfig = state.config,
+            selectedSetupMode = chosenSetup,
             botProfiles = state.botProfiles,
-            onDismiss = { showNewGameDialog = false },
+            onBack = {
+                pendingSetupMode = null
+                showPlayModeMenu = true
+            },
+            onDismiss = { pendingSetupMode = null },
             onStartGame = { config ->
-                showNewGameDialog = false
+                pendingSetupMode = null
                 viewModel.startNewGame(config)
             }
         )

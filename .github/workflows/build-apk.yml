@@ -136,7 +136,8 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: stuchess ${{ github.ref_name }}
           generate_release_notes: true
-          prerelease: true
+          prerelease: false
+          make_latest: true
           fail_on_unmatched_files: true
           files: |
             dist/stuchess_v7a.apk
