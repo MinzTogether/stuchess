@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Stuchess" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#FF262421</item>
+        <item name="android:navigationBarColor">#FF262421</item>
+        <item name="android:windowBackground">#FF262421</item>
+    </style>
+</resources>

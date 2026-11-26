@@ -1,0 +1,48 @@
+name: Build stuchess APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build bot engine binaries (arm64-v8a & armeabi-v7a)
+        run: |
+          chmod +x scripts/build_stockfish_android.sh
+          chmod +x stockfish-src/scripts/net.sh 2>/dev/null || true
+          CUSTOM_ARCHIVE="$(find bot-sources -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.tgz' -o -name '*.zip' -o -name '*.rar' \) 2>/dev/null | head -n 1 || true)"
+          if [ -n "$CUSTOM_ARCHIVE" ]; then
+            ./scripts/build_stockfish_android.sh "$CUSTOM_ARCHIVE"
+          else
+            ./scripts/build_stockfish_android.sh stockfish-src/src
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Run unit tests
+        run: gradle testDebugUnitTest
+
+      - name: Build Debug APKs (armeabi-v7a, arm64-v8a, universal)
+        run: gradle assembleDebug
+
+      - name: Upload stuchess APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stuchess-debug-apks
+          path: app/build/outputs/apk/debug/*.apk
