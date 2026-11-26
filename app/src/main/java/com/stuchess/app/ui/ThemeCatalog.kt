@@ -103,14 +103,17 @@ object ThemeCatalog {
     }
 
     fun resolvePieceModel(context: Context, packId: String, pieceCode: String): Any {
-        if (packId == "classic" || packId == "minimal") {
-            return "file:///android_asset/pieces/$packId/$pieceCode.svg"
+        if (packId == "classic") {
+            return "file:///android_asset/pieces/classic/$pieceCode.png"
+        }
+        if (packId == "minimal") {
+            return "file:///android_asset/pieces/minimal/$pieceCode.svg"
         }
         val packDir = File(File(context.filesDir, "pieces"), packId)
         for (ext in listOf("svg", "png", "webp")) {
             val candidate = File(packDir, "$pieceCode.$ext")
             if (candidate.exists()) return candidate
         }
-        return "file:///android_asset/pieces/classic/$pieceCode.svg"
+        return "file:///android_asset/pieces/classic/$pieceCode.png"
     }
 }
